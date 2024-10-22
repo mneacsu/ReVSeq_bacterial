@@ -1,0 +1,27 @@
+ARIBA run with this command:
+/usr/local/bin/ariba prepareref prepareref -f out.vfdb.fa -m out.vfdb.tsv out.vfdb.prepareref
+from this directory: /mnt/c/users/mneacsu/downloads
+
+ARIBA version: 2.14.6
+
+External dependencies:
+bowtie2	2.4.4	/usr/bin/bowtie2
+cdhit	4.8.1	/usr/bin/cd-hit-est
+nucmer	3.1	/usr/bin/nucmer
+
+External dependencies OK: True
+
+Python version:
+3.10.12 (main, Sep 11 2024, 15:47:36) [GCC 11.4.0]
+
+Python packages:
+ariba	2.14.6	/usr/local/lib/python3.10/dist-packages/ariba/__init__.py
+bs4	4.12.3	/usr/local/lib/python3.10/dist-packages/bs4/__init__.py
+dendropy	5.0.1	/usr/local/lib/python3.10/dist-packages/dendropy/__init__.py
+pyfastaq	3.17.0	/usr/local/lib/python3.10/dist-packages/pyfastaq/__init__.py
+pymummer	0.10.3	/usr/local/lib/python3.10/dist-packages/pymummer/__init__.py
+pysam	0.22.1	/usr/local/lib/python3.10/dist-packages/pysam/__init__.py
+
+Python packages OK: True
+
+Everything looks OK: True
