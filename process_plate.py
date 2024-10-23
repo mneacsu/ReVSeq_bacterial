@@ -47,6 +47,9 @@ def get_bacterial_info(dir_path, sample):
     df.loc[df['rank']=='S', 'reads_taxon'] = df.loc[df['rank']=='S', 'reads_rooted']
     df.to_csv(os.path.join(dir_path, sample, sample + '_species_filtered.tsv'), sep = '\t', header=False, index=False)
 
+    reads_total = df[df['tax_name'].isin(['unclassified', 'root'])]['reads_rooted'].sum()
+    reads_unclassified = df[df['tax_name']=='unclassified']['reads_rooted'].tolist()[0] if not df[df['tax_name']=='unclassified'].empty else 0
+    reads_viruses = df[df['tax_name']=='Viruses']['reads_rooted'].tolist()[0] if not df[df['tax_name']=='Viruses'].empty else 0
     reads_bacteria = df[df['tax_name']=='Bacteria']['reads_rooted'].tolist()[0] if not df[df['tax_name']=='Bacteria'].empty else 0
     perc_bacteria = df[df['tax_name']=='Bacteria']['percent_reads'].tolist()[0] if not df[df['tax_name']=='Bacteria'].empty else 0
 
@@ -58,7 +61,7 @@ def get_bacterial_info(dir_path, sample):
     df.loc[df['rank']=='G', 'reads_taxon'] = df.loc[df['rank']=='G', 'reads_rooted']
     df.to_csv(os.path.join(dir_path, sample, sample + '_genus_filtered.tsv'), sep = '\t', header=False, index=False)
 
-    return {"sample": sample, "reads_bacteria": reads_bacteria, "perc_bacteria": perc_bacteria, 'Bacillota (Firmicutes)': perc_by_phylum[0], 'Actinomycetota': perc_by_phylum[1],\
+    return {"sample": sample, "reads_total": reads_total, "reads_unclassified": reads_unclassified, "reads_viruses": reads_viruses, "reads_bacteria": reads_bacteria, "perc_bacteria": perc_bacteria, 'Bacillota (Firmicutes)': perc_by_phylum[0], 'Actinomycetota': perc_by_phylum[1],\
     'Bacteroidota': perc_by_phylum[2], 'Pseudomonadota (Proteobacteria)': perc_by_phylum[3], 'Campylobacterota': perc_by_phylum[4], 'Fusobacteriota': perc_by_phylum[5], \
     "pathogenic_species_threshold_reads": 5000, "pathogenic_species": pathogens}
 
@@ -69,7 +72,7 @@ def get_AMR_genes(dir_path, db_path, sample):
 
 if __name__ == '__main__':
 
-    df = pd.DataFrame(columns=['sample', 'reads_bacteria', 'perc_bacteria', 'Bacillota (Firmicutes)','Actinomycetota','Bacteroidota','Pseudomonadota (Proteobacteria)','Fusobacteriota','Campylobacterota', \
+    df = pd.DataFrame(columns=['sample', 'reads_total', 'reads_unclassified', 'reads_viruses', 'reads_bacteria', 'perc_bacteria', 'Bacillota (Firmicutes)','Actinomycetota','Bacteroidota','Pseudomonadota (Proteobacteria)','Fusobacteriota','Campylobacterota', \
         'pathogenic_species_threshold_reads', 'pathogenic_species'])
 
     if not os.path.exists(output_dir):
