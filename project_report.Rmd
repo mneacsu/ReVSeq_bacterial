@@ -1,0 +1,399 @@
+---
+title: "ReVSeq - Bacterial Reads Analysis"
+author: "Mara Neacsu"
+date: "`r Sys.Date()`"
+output:
+  pdf_document: default
+  html_document:
+    df_print: paged
+bibliography: references.bib
+biblio-style: ieeetr
+csl: http://www.zotero.org/styles/elsevier-vancouver
+link-citations: yes
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = F, warning = FALSE, message = FALSE)
+```
+
+## Project description
+
+The idea of this project was to perform a detailed analysis of the bacterial reads detected in ReVSeq samples. The first goal was to investigate the species composition of samples and determine whether the bacterial reads originate from the normal microbiota of the respiratory tract or from bacterial contamination that may occur during transport and sample preparation. Another objective was determining the impact of bacterial reads on the viral sequencing quality. In addition, we looked for virus-bacteria associations and checked whether the presence of potentially pathogenic bacterial species and virulence factors might explain the negative PCR results despite respiratory infection symptoms. <!--Lastly, we investigated whether it is possible to reliably detect virulence factors and antimicrobial resistance genes from short-read sequencing data without bacterial genome amplification.-->
+
+## General statistics
+
+The dataset consist of 1089 clinical samples from 13 different plates. Below are the distributions of the total, viral, and bacterial read counts. Interestingly, across all samples there are almost as many reads mapping to bacteria (709 M) as to viruses (882 M), although the samples were amplified for viral genomes.
+
+```{r, fig.show="hold", out.width="33%"}
+pacman::p_load(tidyverse, ggplot2, htmltools,umap, Rtsne, microViz, cowplot, hydroTSM, plyr)
+
+df <- read.csv('results/010623RVS/plate_report.csv')
+
+for(p in c('RVSeq71123', paste0('RVSeqPlate', 3:13))){
+  df_plate <- read.csv(paste0('results/',p,'/plate_report.csv'))
+  df <- rbind(df, df_plate)
+}
+
+df$positive_PCR<-as.logical(df$positive_PCR)
+df$positive_seq<-as.logical(df$positive_seq)
+df$multiple_PCR<-as.logical(df$multiple_PCR)
+df$multiple_seq<-as.logical(df$multiple_seq)
+df$perfect_match<-as.logical(df$perfect_match)
+df$partial_match<-as.logical(df$partial_match)
+df$likely_bacterial_infection<-as.logical(df$likely_bacterial_infection)
+
+hist(log10(df$reads_total+1), main = 'Total', xlab = 'No. of reads [log10]', breaks=30, xlim = c(0,8), ylim = c(0,300), cex.lab=1.7, cex.axis=1.7, cex.main=2.5, cex.sub=1.7, col = 'lightblue')
+#hist(log10(df$reads_unclassified+1), main = 'Unclassified', xlab = 'No. of reads [log10]', breaks=30, xlim = c(0,8), ylim = c(0,300))
+hist(log10(df$reads_viruses+1), main = 'Viral', xlab = 'No. of reads [log10]', breaks=30, xlim = c(0,8), ylim = c(0,300), cex.lab=1.7, cex.axis=1.7, cex.main=2.5, cex.sub=1.7, col='lightblue')
+hist(log10(df$reads_bacteria+1), main = 'Bacterial', xlab = 'No. of reads [log10]', breaks=30, xlim = c(0,8), ylim = c(0,300), cex.lab=1.7, cex.axis=1.7, cex.main=2.5, cex.sub=1.7, col='lightblue')
+```
+
+## Taxonomic profiling
+
+The following analysis is based on the kraken2 results obtained by Matteo using a custom database. The results were aggregated over all ReVSeq samples and the species composition was visualized using KronaTools [@ondov_interactive_2011]. The most abundant genera were *Streptococcus* (11%), *Acinetobacter* (7%), *Rothia* (4%), *Stenotrophomonas* (3%), *Pseudomonas* (3%), *Veillonella* (2%), *Schaalia* (2%), *Neisseria* (2%), *Moraxella* (2%), *Haemophilus* (2%), *Chryseobacterium* (2%), *Leptotrichia* (2%), and *Klebsiella* (2%). The most abundant species were *Rothia mucilaginosa* (3%), *Leptotrichia wadei* (0.9%), *Schaalia odontolytica* (0.8%), *Staphylococcus aureus* (0.7%), *Porphyromonas sp. oral taxon 275* (0.7%), *Haemophilus influenzae* (0.6%), and *Stenotrophomonas maltophilia* (0.5%). All are part of the normal respiratory microbiota [@drigot_insights_2024; @natalini_dynamic_2023; @bassis_nasal_2014]. However, some of them are also opportunistic pathogens [@cappelletty_microbiology_1998; @dasaraju_infections_1996]. These are "organisms that normally inhabit the human body and do not cause a disease in healthy people, but become pathogenic when the body's defense system is impaired" [@riccardi_definition_2019]. Also, some strains of these species show virulence factors ("genes that enable microbial pathogens to colonize, evade or suppress the immune response, obtain nutrients from the host, and sense environmental changes") [@casadevall_virulence_2009].
+
+Bacterial genera known to be clinical and laboratory contaminants [@zhu_bacterial_2020; @salter_reagent_2014] were only detected in low amounts (\< 1% of all bacterial reads detected across all samples), except for those that are also part of the normal respiratory flora. All negative controls had low bacterial read counts (\< 5000 reads), representing 0-57% of the total number of reads. In general, positive controls sequenced multiple times have approximately equal numbers of bacterial reads (\*). Therefore, it is unlikely that the majority of bacterial reads detected in ReVSeq samples result from contamination.
+
+(\*) Exception: the positive control sample in plate 4 has 30x more bacterial reads than in plate 3.
+
+Same analysis was performed for 8 mouthwash and 5 wastewater samples. The mouthwash samples contained more gram-positive bacteria (55%) as compared to nasal swabs (30%). In particular, the *Rothia* (10%), *Schaalia* (6%), and *Veillonella* (6%) genera were enriched. These genera are indeed known to be more abundant in the oral cavity and oropharynx than in the nasal cavity and nasopharynx [@natalini_dynamic_2023]. The composition of wastewater samples looked completely different to the clinical ones, with only 7% gram-positive bacteria. The most abundant genera here were *Aliarcobacter* (12%), *Flavobacterium* (8%), and *Arcobacter*(6%), which are all commonly found in wastewater [@mueller_aliarcobacter_2020; @zaheen_freshwater_2022; @fisher_arcobacter_2014]. Below are the percentages (out of all bacterial reads) for the six major phyla, compared between the three sample types.
+
+| Type          | Phylum           | Nasal swabs | Mouthwash | Wastewater |
+|---------------|------------------|-------------|-----------|------------|
+| Gram-positive | Bacillota        | 20%         | 31%       | 7%         |
+|               | Actinomycetota   | 10%         | 23%       | 0.4%       |
+|               |                  |             |           |            |
+| Gram-negative | Pseudomonadota   | 53%         | 29%       | 31%        |
+|               | Bacteroidota     | 7%          | 10%       | 23%        |
+|               | Fusobacteriota   | 2%          | 2%        | 0.6%       |
+|               | Campylobacterota | 0.7%        | 0.6%      | 23%        |
+
+An interactive visualization of the species composition is available [here](https://github.com/mneacsu/ReVSeq_bacterial/blob/main/clinical_vs_wastewater.html).
+
+<!--![Clinical samples](..\Pictures\Screenshots\clinical_samples.png "Clinical samples"){width=47%}
+
+
+![Wastewater samples](..\Pictures\Screenshots\wastewater.png "Wastewater samples"){width=45%}
+
+
+\newpage-->
+
+## Impact of bacterial reads on the viral sequencing quality
+
+We looked for differences in the number of bacterial reads between the PCR positive and negative samples, between samples with and without viral strains detected by sequencing, and between samples with sequencing results identical and non-identical to the PCR results. No significant differences were found. Also, in PCR positive samples, there seems to be no correlation between the number of bacterial reads and the number of viral reads or the viral assembly quality as given by coverage or DP10 (\*). Therefore, presence of bacteria does not explain the negative sequencing results. 
+
+(\*) for samples with multiple strains detected by sequencing. the highest DP10/coverage was considered
+
+```{r, warning=F, fig.show="hold", out.width="50%"}
+
+# g1<-ggplot(df,aes(x=positive_PCR, y=log10(reads_bacteria), fill=positive_seq))+
+#   geom_boxplot()+
+#   xlab('PCR detection')+
+#   ylab('No. bacterial reads [log10]')+
+#   ggtitle('Bacterial read count by PCR/sequencing type')+
+#   scale_fill_discrete(name='Sequencing detection')
+
+df$match <- as.factor(ifelse(df$perfect_match, 'Yes', ifelse(df$partial_match, 'Partial', 'No')))
+df$type <- paste0(df$positive_PCR, '/', df$positive_seq)
+
+g1<-ggplot(df,aes(x=type, y=log10(reads_bacteria+1), fill=match))+
+  geom_boxplot()+
+  xlab('PCR/Sequencing Detection')+
+  ylab('No. bacterial reads [log10]')+
+  ggtitle('Bacterial read count by PCR/sequencing type')+
+  scale_fill_discrete(name='PCR/Seq Match') + theme_light()
+
+g2<-ggplot(df[df$positive_PCR,],aes(x=log10(reads_bacteria+1), y=log10(reads_viruses+1)))+
+  geom_point()+
+  xlab('No. bacterial reads [log10]')+
+  ylab('No. viral reads [log10]')+
+  ggtitle('Viral read counts in PCR positive samples') + theme_light()
+
+g3<-ggplot(df[df$positive_PCR,],aes(x=log10(reads_bacteria+1), y=log10(coverage+1)))+
+  geom_point()+
+  xlab('No. bacterial reads [log10]')+
+  ylab('Coverage [log10]')+
+  ggtitle('Coverage in PCR positive samples') + theme_light()
+
+g4<-ggplot(df[df$positive_PCR,],aes(x=log10(reads_bacteria+1), y=DP10))+
+  geom_point()+
+  xlab('No. bacterial reads [log10]')+
+  ggtitle('DP10 in PCR positive samples') + theme_light()
+
+
+
+g1
+g2
+g3
+g4
+```
+
+## Virus-bacteria associations
+
+To investigate possible changes in the bacterial composition of samples associated with the presence of a viral strain, the fractions of bacterial reads mapping to the top 20 most abundant genera were calculated for each sample and used as input for two dimensionality reduction algorithms: UMAP and tSNE (\*). Samples infected with the same virus did not cluster together (\*\*). Hence, no systematical effect of viral infection on the bacterial population could be detected. 
+
+(\*) UMAP preserves data structure better than tSNE. It tends to produce more compact clusters, which is not always desirable for visualization purposes. 
+
+(\*\*) samples with no detected strain and those with multiple strains were used for dimensionality reduction, but they are not plotted below
+
+```{r, fig.show="hold", out.width="50%", warning = F}
+
+df$virus_cat <- NA
+df$virus_cat[!df$multiple_PCR] <- mapvalues(df$strains_PCR[!df$multiple_PCR],
+                                 from = c('coronavirus 229E', 'coronavirus HKU1', 'coronavirus NL63', 'coronavirus OC43', 'SARS-CoV-2',
+                                          paste0('Parainfluenza ', 1:4), 'Parainlfuenca 1', c('Influenza A', 'Influenza B'), 'RSV - A/B', 'Rhino- / Enterovirus', ''),
+                                 to = c(rep('Coronavirus',5), rep('Parainfluenza',4), 'Parainfluenza', rep('Influenza',2), 'RSV', 'Enterovirus', 'PCR negative'))
+
+df$virus_cat_seq <- NA
+df$virus_cat_seq[!df$multiple_seq] <- mapvalues(df$strains_seq[!df$multiple_seq],
+                                 from = c('coronavirus 229E', 'coronavirus HKU1', 'coronavirus NL63', 'coronavirus OC43', 'SARS-CoV-2',
+                                          paste0('Parainfluenza ', 1:4), 'Parainlfuenca 1', c('Influenza A', 'Influenza B'), 'RSV - A/B', 'Rhino- / Enterovirus', ''),
+                                 to = c(rep('Coronavirus',5), rep('Parainfluenza',4), 'Parainfluenza', rep('Influenza',2), 'RSV', 'Enterovirus', 'Negative'))
+
+df$virus_cat <- factor(df$virus_cat, levels = c('Adenovirus', 'Coronavirus', 'Enterovirus', 'Influenza', 'Metapneumovirus', 'Parainfluenza', 'RSV', 'Bocavirus', 'Parechiovirus', 'Polyomavirus'))
+df$virus_cat_seq <-factor(df$virus_cat_seq, levels = c('Adenovirus', 'Coronavirus', 'Enterovirus', 'Influenza', 'Metapneumovirus', 'Parainfluenza', 'RSV', 'Bocavirus', 'Parechiovirus', 'Polyomavirus'))
+
+data <- read.csv('genera_by_sample.csv', row.names=1)
+
+set.seed(52)
+umap_coords<-umap(data[df$sample,])
+
+df$`UMAP 1`<- umap_coords$layout[,1]
+df$`UMAP 2`<- umap_coords$layout[,2]
+
+g1<-ggplot(df[!df$multiple_seq&df$positive_seq,],aes(x=`UMAP 1`, y=`UMAP 2`, color = virus_cat_seq))+
+  geom_point()+
+  scale_color_brewer(name= 'Sequencing Strain', palette= 'Paired')  + theme_light()
+  #scale_color_manual(name= 'Sequencing Strain',values=distinct_palette(pal = "brewerPlus"))
+
+g2<-ggplot(df[!df$multiple_PCR&df$positive_PCR,],aes(x=`UMAP 1`, y=`UMAP 2`, color = virus_cat))+
+  geom_point()+
+  scale_color_brewer(name= 'PCR Strain', palette= 'Paired')  + theme_light()
+  #scale_color_manual(name= 'PCR Strain', values=distinct_palette(pal = "brewerPlus"))
+
+set.seed(12)
+tsne_coords<-Rtsne(data[df$sample,], check_duplicates = FALSE)
+
+df$`tSNE 1`<- tsne_coords$Y[,1]
+df$`tSNE 2`<- tsne_coords$Y[,2]
+
+g3<-ggplot(df[!df$multiple_seq&df$positive_seq,],aes(x=`tSNE 1`, y=`tSNE 2`, color = virus_cat_seq))+
+  geom_point()+
+  scale_color_brewer(name= 'Sequencing Strain', palette= 'Paired')  + theme_light()
+  #scale_color_manual(name= 'Sequencing Strain', values=distinct_palette(pal = "brewerPlus"))
+
+g4<-ggplot(df[!df$multiple_PCR&df$positive_PCR,],aes(x=`tSNE 1`, y=`tSNE 2`, color = virus_cat))+
+  geom_point()+
+  scale_color_brewer(name= 'PCR Strain', palette= 'Paired')  + theme_light()
+  #scale_color_manual(name= 'PCR Strain', values=distinct_palette(pal = "brewerPlus"))
+
+g1
+g2
+g3
+g4
+```
+
+## Potentially pathogenic species & Virulence factors
+
+Since many species of the human respiratory flora are oppurtunistic pathogens, it is hard to determine whether a higher number of reads assigned these species is a sign of bacterial infection or just random effect of sampling, amplification or sequencing. However, the association of such enrichments with the presence of virulence factors indicate an increased likelihood of bacterial infection. Following species are considered potentially pathogenic: *Bordetella pertussis*, *Burkholderia pseudomallei*, *Chlamydophila pneumoniae*, *Corynebacterium diphtheriae*, *Haemophilus influenzae*, *Mycoplasma pneumoniae*, *Streptococcus pneumoniae*, *Legionella pneumophila*, *Staphylococcus aureus*, *Klebsiella pneumoniae*, *Moraxella catarrhalis*, *Pseudomonas aeruginosa*, *Acinetobacter baumannii*, and *Stenotrophomonas maltophilia*. Virulence factors were detected by aligning the reads to the virulence factor database (VFDB) [@chen_vfdb_2005] using ARIBA - a tool for the identification of antimicrobial resistance genes using local assemblies [@hunt_ariba_2017].
+
+Samples with more than 5000 reads aligned to a potentially pathogenic species and at least 3 detected virulence factors were assigned the 'likely bacterial infection' flag. The frequency of this characteristic was compared between the PCR positive and PCR negative samples. There were no significant differences (chi-square test, p=1). Hence, bacterial infections do not necessarily explain the presence of symptoms in patients with negative viral PCR results.
+
+```{r, include=F}
+#df$likely_bacterial_infection <- (df$pathogenic_species!="") & (df$virulence_factor_count >=3)
+(mat<-table(df$positive_PCR, df$likely_bacterial_infection))
+chisq.test(mat)
+```
+
+Next, we checked whether the frequency of bacterial infections varies by season. The highest incidence was observed in spring, and the lowest in winter. The ANOVA test showed a significant dependency (p=0.02). We also checked, using a two-way ANOVA test with interaction, whether adjusting for season results in significant differences between PCR negative and positive samples, but this was not the case (p=0.92). Similarly, we tested for differences between the four Swiss regions (German-speaking Switzerland, French-speaking Switzerland, Ticino and Graubünden), but no significant differences were found (ANOVA, p=0.46). Metadata regarding the treatment type was available for 98 samples (39 ambulant and 59 stationary). The bacterial infection frequency was similar between the two categories (chi-square test, p=1).
+
+```{r, include=F}
+df$ent_date <- as.Date(df$ent_date, format = "%m/%d/%Y")
+df$season <-factor(time2season(df$ent_date, out.fmt = 'seasons'), levels = c('spring', 'summer', 'autumn', 'winter'))
+
+aov(likely_bacterial_infection ~ season, data = df)%>%summary()
+aov(likely_bacterial_infection ~ positive_PCR + season + positive_PCR:season, data = df)%>%summary()
+
+df$region <- mapvalues(df$prescriber, from = c("BL", "GR", "AG", "VD", "SH", "BS", "ZH", "BE", "SG",
+                                               "GE", "TI", "SZ", "LU", "VS", "SO",
+                                               "TG", "FR", "JU"),
+                       to = c("German-speaking", "Graubunden", "German-speaking", "French-speaking", "German-speaking", "German-speaking", "German-speaking", "German-speaking", "German-speaking",
+                              "French-speaking", "Ticino", "German-speaking", "German-speaking", "French-speaking", "German-speaking",
+                              "German-speaking", "French-speaking", "French-speaking"))
+
+aov(likely_bacterial_infection~region, df)%>%summary()
+
+df_meta <- read.csv('mara_all_data.csv')
+df_meta <-df_meta%>% distinct(pseudonymized_id, .keep_all = TRUE)
+rownames(df_meta) <- df_meta$pseudonymized_id
+df$treatment <- df_meta[df$sample, 'treatment_type']
+
+mat<-table(df$likely_bacterial_infection[!is.na(df$treatment)], df$treatment[!is.na(df$treatment)])
+chisq.test(mat)
+
+#glm(formula = likely_bacterial_infection ~ positive_PCR + season + positive_PCR:season, data = df, family = 'binomial')%>%summary
+```
+
+```{r, warning=F}
+df$month <- month(df$ent_date, label=T)
+df$year <- year(df$ent_date)
+
+# mat<- table(df$month, df$likely_bacterial_infection)
+# bacterial_frequencies <- mat[,2]/rowSums(mat)
+# 
+# mat<- table(df$month, df$positive_PCR)
+# viral_frequencies <- mat[,2]/rowSums(mat)
+# 
+# heatmap(rbind(bacterial_frequencies, viral_frequencies), Rowv=NA, Colv = NA, na.rm = T, labRow=c('Bacterial', 'Viral'), main = 'Frequency of viral/bacterial infections by month', cexRow = 1.5)
+
+df_grouped <- df %>% group_by(month, year) %>%
+  dplyr::summarize(count = n(),
+            bacterial_infections = sum(likely_bacterial_infection),
+            viral_infections = sum(positive_PCR))
+
+df_grouped <- mutate(df_grouped,
+                     bacterial_freq = bacterial_infections/count,
+                     viral_freq = viral_infections/count,
+                     date = as.Date(as.yearmon(paste(month, year), "%B %Y")),
+                     group = ifelse(date < '2023-10-01', 1, 2))
+
+ggplot(df_grouped, aes(x=date))+
+  geom_line(aes(y=viral_freq, colour = "Viral", group=group)) +
+  geom_line(aes(y=bacterial_freq, colour = "Bacterial", group=group))+
+  scale_x_date(breaks=df_grouped$date, labels = paste(df_grouped$month, df_grouped$year))+
+  theme_bw()+
+  theme(axis.text.x = element_text(angle = 45,  vjust = 0.5, hjust=0.5), panel.grid.minor = element_blank())+
+  xlab('Month')+
+  ylab('Frequency')+
+  ggtitle('Frequency of viral and bacterial infections by month' )+
+  scale_colour_discrete(name = "Type")
+
+```
+
+Lastly, we looked for changes in the frequency of bacterial infections associated with particular viral strains. Samples with multiple strains detected at PCR were removed from the analysis to ensure that the effect (if present) is not attributed to the wrong strain. The incidence of bacterial infections was significantly higher in samples positive to Parainfluenza strains (chi-square test, p=0.015), and lower in those positive to Influenza viruses (chi-square test, p=0.004). After adjusting for season, the results were still significant (two-way ANOVA with interaction, p=0.008 for Parainfluenza and p=0.002 for Influenza). However, when considering the sequencing strains instead of the PCR ones, the differences were only significant for Parainfluenza (chi-square test, p=0.03; two-way ANOVA interaction with season, p=0.02).
+
+```{r, include=F}
+for(v in c("Influenza",  "Parainfluenza",  "Coronavirus",   "Metapneumovirus",   "RSV",   "Enterovirus",  "Adenovirus")){
+    df$virus_infection <- (df$virus_cat==v)
+    mat <- table(df$likely_bacterial_infection[!df$multiple_PCR], df$virus_infection[!df$multiple_PCR])
+    if(chisq.test(mat)$p.value < 0.05 ){
+        print(paste0(v, ' p=', chisq.test(mat)$p.value))
+        print(mat)
+        #print(aov(likely_bacterial_infection~virus_infection, df[!df$multiple_PCR,])%>%summary())
+        print(aov(likely_bacterial_infection~virus_infection + season + virus_infection:season, df[!df$multiple_PCR,])%>%summary())
+    }
+    
+}
+
+for(v in c("Influenza",  "Parainfluenza",  "Coronavirus",   "Metapneumovirus",   "RSV",   "Enterovirus",  "Adenovirus")){
+    df$virus_infection <- (df$virus_cat_seq==v)
+    mat <- table(df$likely_bacterial_infection[!df$multiple_seq], df$virus_infection[!df$multiple_seq])
+    if(chisq.test(mat)$p.value < 0.05 ){
+        print(paste0(v, ' p=', chisq.test(mat)$p.value))
+        print(mat)
+        #print(aov(likely_bacterial_infection~virus_infection, df[!df$multiple_PCR,])%>%summary())
+        print(aov(likely_bacterial_infection~virus_infection + season + virus_infection:season, df[!df$multiple_seq,])%>%summary())
+    }
+    
+}
+
+#model<- glm(likely_bacterial_infection~virus_cat+season +virus_cat:season, df[!df$multiple_PCR,], family = 'binomial')
+#anova(model)
+```
+
+Some pathogenic bacteria had significantly different frequencies in samples infected with particular viral strains. We found both positive associations (frequency of bacteria higher when virus present) and negative ones (frequency lower when virus present). 
+
+| Bacteria | Virus           | p (chi-square test) | Association Type |
+|---------------|------------------|-------------|-----------|
+| *Haemophilus influenzae* | Enterovirus | 0.04   | Positive |
+| *Haemophilus influenzae* | Influenza   | 0.01 | Negative |
+| *Staphylococcus aureus* | Parainfluenza | 9e-5   | Positive |
+| *Staphylococcus aureus* | Enterovirus   | 0.03 | Positive |
+| *Staphylococcus aureus* | Influenza | 0.001   | Negative |
+| *Staphylococcus aureus* | RSV   | 0.004 | Negative |
+| *Acinetobacter baumannii* | Metapneumovirus   | 0.02 | Positive |
+
+When considering the sequencing strains, only the associations of *Staphylococcus aureus* with Parainfluenza (p=2.6e-5), Influenza (p=0.01), and RSV (p=0.03) were still significant. This is probably due to the low sequencing detection rate for Enteroviruses and Metapneumovirus.
+
+```{r, include=F}
+pathogenic_species<-c('Bordetella pertussis', 'Burkholderia pseudomallei', 'Chlamydophila pneumoniae', 'Corynebacterium diphtheriae', 'Haemophilus influenzae', 'Mycoplasma pneumoniae', 'Streptococcus pneumoniae', 
+'Legionella pneumophila', 'Staphylococcus aureus', 'Klebsiella pneumoniae', 'Moraxella catarrhalis', 'Pseudomonas aeruginosa', 'Acinetobacter baumannii', 'Stenotrophomonas maltophilia')
+
+df_unique <- df[!df$multiple_PCR,] 
+
+for(b in pathogenic_species){
+  for(v in c("Influenza"  ,     "Parainfluenza"  , "Coronavirus"  ,   "Metapneumovirus", "RSV"  ,           "Enterovirus"   ,  "Adenovirus")){
+    bacteria_present <- sapply(df_unique$pathogenic_species, function(x) b %in% str_split(x, ',')[[1]])
+    virus_present <- (df_unique$virus_cat == v)
+    mat <- table(bacteria_present, virus_present)
+    if(all(dim(mat)==c(2,2))){
+      if(chisq.test(mat)$p.value < 0.05)
+        if(mat[1,1]*mat[2,2]/(mat[1,2]*mat[2,1])>1) print(paste0(b,'-',v,': p=',chisq.test(mat)$p.value,' Positive'))
+        else print(paste0(b,'-',v,': p=',chisq.test(mat)$p.value,' Negative'))
+
+    }
+  }
+}
+
+df_unique <- df[!df$multiple_seq,] 
+
+for(b in pathogenic_species){
+  for(v in c("Influenza"  ,     "Parainfluenza"  , "Coronavirus"  ,   "Metapneumovirus", "RSV"  ,           "Enterovirus"   ,  "Adenovirus")){
+    bacteria_present <- sapply(df_unique$pathogenic_species, function(x) b %in% str_split(x, ',')[[1]])
+    virus_present <- (df_unique$virus_cat_seq == v)
+    mat <- table(bacteria_present, virus_present)
+    if(all(dim(mat)==c(2,2))){
+      if(chisq.test(mat)$p.value < 0.05)
+        if(mat[1,1]*mat[2,2]/(mat[1,2]*mat[2,1])>1) print(paste0(b,'-',v,': p=',chisq.test(mat)$p.value,' Positive'))
+        else print(paste0(b,'-',v,': p=',chisq.test(mat)$p.value,' Negative'))
+
+    }
+  }
+}
+```
+
+
+\newpage
+
+## References
+<div id="refs"></div>
+
+\newpage
+
+## Appendix
+
+### Unclassified reads
+The number of unclassified reads is proportional with the number of total reads. Samples that were positive at PCR and negative at sequencing do not have a significantly higher number of unclassified reads. For the PCR negative, sequencing positive group there is not enough data (n=6) to draw a conclusion. There is no negative correlation between the number of unclassified reads and the viral read counts or DP10 in the PCR positive samples.
+```{r, warning=F, fig.show="hold", out.width="50%"}
+
+g1<-ggplot(df,aes(x=type, y=log10(reads_unclassified+1), fill=match))+
+  geom_boxplot()+
+  xlab('PCR/Sequencing Detection')+
+  ylab('No. unclassified reads [log10]')+
+  ggtitle('Unclassified read count by PCR/sequencing type')+
+  scale_fill_discrete(name='PCR/Seq Match') + theme_light()
+
+g2<-ggplot(df,aes(x=log10(reads_total+1), y=log10(reads_unclassified+1)))+
+  geom_point()+
+  xlab('Total no. of reads [log10]')+
+  ylab('No. unclassified reads [log10]')+
+  ggtitle('Unclassified vs. total read counts') + theme_light()
+
+g3<-ggplot(df[df$positive_PCR,],aes(x=log10(reads_unclassified+1), y=log10(reads_viruses+1)))+
+  geom_point()+
+  xlab('No. unclassified reads [log10]')+
+  ylab('No. viral reads [log10]')+
+  ggtitle('Viral read counts in PCR positive samples') + theme_light()
+
+g4<-ggplot(df[df$positive_PCR,],aes(x=log10(reads_unclassified+1), y=DP10))+
+  geom_point()+
+  xlab('No. unclassified reads [log10]')+
+  ggtitle('DP10 in PCR positive samples') + theme_light()
+
+
+
+g1
+g2
+g3
+g4
+```

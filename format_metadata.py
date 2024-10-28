@@ -4,7 +4,8 @@ import numpy as np
 df = pd.read_csv('mara_all_data.csv', header=0) #sep=';', encoding='latin-1'
 df['strains_PCR'] = df['strains_PCR'].astype(str)
 
-df_fmt = pd.DataFrame(columns = ['sample', 'substrains', 'strains_seq', 'strains_PCR', 'multiple_seq', 'multiple_PCR', 'positive_seq', 'positive_PCR', 'perfect_match', 'partial_match', 'plate', 'aligned_reads', 'prescriber', 'ent_date', 'panels_PCR', 'coverage', 'DP5', 'DP10', 'DP20'])
+df_fmt = pd.DataFrame(columns = ['sample', 'substrains', 'strains_seq', 'strains_PCR', 'multiple_seq', 'multiple_PCR', 'positive_seq', 'positive_PCR', 'perfect_match', 
+	'partial_match', 'plate', 'aligned_reads', 'prescriber', 'ent_date', 'treatment', 'panels_PCR', 'coverage', 'DP5', 'DP10', 'DP20'])
 
 
 for sample in df['pseudonymized_id'].unique():
@@ -23,6 +24,7 @@ for sample in df['pseudonymized_id'].unique():
 	aligned_reads = max(df_sample['aligned'])
 	prescriber = df_sample['prescriber'].iloc[0]
 	ent_date = df_sample['ent_date'].iloc[0]
+	treatment = df_sample['treatment_type'].iloc[0]
 	panels_PCR = df_sample['panels_PCR'].iloc[0]
 	coverage = max(df_sample['coverage'])
 	DP5 = max(df_sample['DP5'])
@@ -30,6 +32,7 @@ for sample in df['pseudonymized_id'].unique():
 	DP20 = max(df_sample['DP20'])
 
 	df_fmt = df_fmt._append({'sample': sample, 'substrains': ','.join(substrains), 'strains_seq': ','.join(strains_seq), 'strains_PCR': ','.join(strains_PCR), 'multiple_seq': multiple_seq, 'multiple_PCR': multiple_PCR, 'positive_seq': positive_seq, \
-		'positive_PCR': positive_PCR, 'perfect_match': perfect_match, 'partial_match': partial_match, 'plate': plate, 'aligned_reads': aligned_reads, 'prescriber': prescriber, 'ent_date': ent_date, 'panels_PCR': panels_PCR, 'coverage': coverage, 'DP5': DP5, 'DP10': DP10, 'DP20': DP20}, ignore_index = True)
+		'positive_PCR': positive_PCR, 'perfect_match': perfect_match, 'partial_match': partial_match, 'plate': plate, 'aligned_reads': aligned_reads, 'prescriber': prescriber, 'ent_date': ent_date, 
+		'treatment': treatment, 'panels_PCR': panels_PCR, 'coverage': coverage, 'DP5': DP5, 'DP10': DP10, 'DP20': DP20}, ignore_index = True)
 
 df_fmt.to_csv('all_plates_fmt.csv', index=False)
